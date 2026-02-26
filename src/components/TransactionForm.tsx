@@ -110,6 +110,13 @@ export default function TransactionForm({
     if (watchPriceType !== "MANUAL") setPriceInputCurrency("KRW");
   }, [watchPriceType]);
 
+  // 배당 선택 시 priceType을 항상 MANUAL로 강제
+  useEffect(() => {
+    if (watchType === "DIVIDEND") {
+      setValue("priceType", "MANUAL");
+    }
+  }, [watchType]); // eslint-disable-line
+
   // USD 단가를 해당 날짜 환율로 KRW 환산
   const convertToKRW = async () => {
     const rawPrice = parseFloat(watch("price") || "0");
@@ -230,34 +237,36 @@ export default function TransactionForm({
             {...register("quantity", { onChange: handleQtyOrPriceChange })}
           />
 
-          {/* 가격 입력 방식 */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-300">가격 입력 방식</label>
-            <div className="grid grid-cols-3 gap-1">
-              {[
-                { value: "MANUAL", label: "직접 입력" },
-                { value: "OPEN", label: "시가 자동" },
-                { value: "CLOSE", label: "종가 자동" },
-              ].map(({ value, label }) => (
-                <label
-                  key={value}
-                  className={`cursor-pointer text-center py-2 px-1 rounded-lg text-xs font-medium border transition-all ${
-                    watchPriceType === value
-                      ? "bg-blue-500/20 border-blue-500/60 text-blue-300"
-                      : "bg-slate-700/50 border-slate-600 text-slate-400 hover:border-slate-500"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    value={value}
-                    {...register("priceType")}
-                    className="sr-only"
-                  />
-                  {label}
-                </label>
-              ))}
+          {/* 가격 입력 방식 - 배당은 항상 직접 입력 */}
+          {watchType !== "DIVIDEND" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-300">가격 입력 방식</label>
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { value: "MANUAL", label: "직접 입력" },
+                  { value: "OPEN", label: "시가 자동" },
+                  { value: "CLOSE", label: "종가 자동" },
+                ].map(({ value, label }) => (
+                  <label
+                    key={value}
+                    className={`cursor-pointer text-center py-2 px-1 rounded-lg text-xs font-medium border transition-all ${
+                      watchPriceType === value
+                        ? "bg-blue-500/20 border-blue-500/60 text-blue-300"
+                        : "bg-slate-700/50 border-slate-600 text-slate-400 hover:border-slate-500"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      value={value}
+                      {...register("priceType")}
+                      className="sr-only"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
@@ -333,8 +342,11 @@ export default function TransactionForm({
             ? "입금 금액"
             : watchType === "CASH_OUT"
             ? "출금 금액"
+            : watchType === "DIVIDEND"
+            ? "세후 배당금 수령액"
             : "총 거래 금액"
         }
+        hint={watchType === "DIVIDEND" ? "세금 원천징수 후 실제 입금된 금액을 입력하세요." : undefined}
         type="number"
         step="any"
         placeholder="1000000"
