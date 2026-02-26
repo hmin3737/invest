@@ -18,7 +18,7 @@ interface AnnualReturnsChartProps {
   data: AnnualReturn[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload || !payload.length) return null;
   const value = payload[0].value;

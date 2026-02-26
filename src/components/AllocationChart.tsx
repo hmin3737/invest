@@ -29,7 +29,7 @@ interface AllocationChartProps {
   currency: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function CustomTooltip({ active, payload, currency }: any) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0];

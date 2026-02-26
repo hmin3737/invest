@@ -37,7 +37,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const watchCurrency = watch("currency");
 
   const {
     register,
@@ -49,6 +48,8 @@ export default function DashboardPage() {
     resolver: zodResolver(portfolioSchema),
     defaultValues: { currency: "KRW" },
   });
+
+  const watchCurrency = watch("currency");
 
   const fetchPortfolios = async () => {
     const res = await fetch("/api/portfolios");

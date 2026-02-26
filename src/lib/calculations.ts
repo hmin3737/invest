@@ -75,9 +75,9 @@ export async function calculatePortfolioMetrics(
   const endDate = new Date();
 
   // 고유 티커 수집
-  const tickers = [
-    ...new Set(sorted.filter((t) => t.ticker).map((t) => t.ticker!)),
-  ];
+  const tickers = Array.from(
+    new Set(sorted.filter((t) => t.ticker).map((t) => t.ticker!))
+  );
 
   // Yahoo Finance에서 월별 가격 일괄 조회
   const priceData: Record<string, Record<string, number>> = {};

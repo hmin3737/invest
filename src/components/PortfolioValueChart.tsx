@@ -28,7 +28,7 @@ function formatAxisValue(value: number, currency: string): string {
   return `$${value}`;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function CustomTooltip({ active, payload, label, currency }: any) {
   if (!active || !payload || !payload.length) return null;
   return (
