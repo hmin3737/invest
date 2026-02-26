@@ -35,12 +35,14 @@ interface TransactionFormProps {
   portfolioId: string;
   onSuccess: () => void;
   initialData?: Partial<FormData> & { id?: string };
+  portfolioCurrency?: string;
 }
 
 export default function TransactionForm({
   portfolioId,
   onSuccess,
   initialData,
+  portfolioCurrency = "USD",
 }: TransactionFormProps) {
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export default function TransactionForm({
     setPriceError(null);
     try {
       const res = await fetch(
-        `/api/price?ticker=${encodeURIComponent(watchTicker)}&date=${watchDate}&priceType=${watchPriceType}`
+        `/api/price?ticker=${encodeURIComponent(watchTicker)}&date=${watchDate}&priceType=${watchPriceType}&currency=${portfolioCurrency}`
       );
       const data = await res.json();
       if (!res.ok) {

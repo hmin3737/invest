@@ -168,6 +168,7 @@ export default function EditPortfolioPage() {
       >
         <TransactionForm
           portfolioId={id}
+          portfolioCurrency={portfolio.currency}
           onSuccess={() => {
             setShowAddTx(false);
             fetchPortfolio();

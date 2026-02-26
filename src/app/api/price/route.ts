@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPriceOnDate } from "@/lib/yahoo";
+import { getPriceOnDate, getCurrentExchangeRate, inferTickerCurrency } from "@/lib/yahoo";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ticker = searchParams.get("ticker");
   const dateStr = searchParams.get("date");
   const priceType = searchParams.get("priceType") as "OPEN" | "CLOSE" | null;
+  const currency = searchParams.get("currency") || "USD";
 
   if (!ticker || !dateStr || !priceType) {
     return NextResponse.json(
@@ -31,33 +32,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "미래 날짜는 조회할 수 없습니다." }, { status: 400 });
   }
 
-  const price = await getPriceOnDate(ticker.toUpperCase(), date, priceType);
+  const applyFx = async (rawPrice: number, finalTicker: string) => {
+    if (currency === "KRW" && inferTickerCurrency(finalTicker) === "USD") {
+      const rate = await getCurrentExchangeRate("USD", "KRW");
+      return Math.round(rawPrice * rate);
+    }
+    return rawPrice;
+  };
+
+  let price = await getPriceOnDate(ticker.toUpperCase(), date, priceType);
+  let finalTicker = ticker.toUpperCase();
 
   if (price === null) {
     // 한국 주식이면 .KS 접미사 시도
     if (!ticker.includes(".") && /^\d{6}$/.test(ticker)) {
-      const priceKS = await getPriceOnDate(
-        `${ticker}.KS`,
-        date,
-        priceType
-      );
+      const priceKS = await getPriceOnDate(`${ticker}.KS`, date, priceType);
       if (priceKS !== null) {
         return NextResponse.json({
           ticker: `${ticker}.KS`,
-          price: priceKS,
+          price: await applyFx(priceKS, `${ticker}.KS`),
           priceType,
           date: dateStr,
         });
       }
-      const priceKQ = await getPriceOnDate(
-        `${ticker}.KQ`,
-        date,
-        priceType
-      );
+      const priceKQ = await getPriceOnDate(`${ticker}.KQ`, date, priceType);
       if (priceKQ !== null) {
         return NextResponse.json({
           ticker: `${ticker}.KQ`,
-          price: priceKQ,
+          price: await applyFx(priceKQ, `${ticker}.KQ`),
           priceType,
           date: dateStr,
         });
@@ -69,5 +71,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ticker, price, priceType, date: dateStr });
+  return NextResponse.json({
+    ticker: finalTicker,
+    price: await applyFx(price, finalTicker),
+    priceType,
+    date: dateStr,
+  });
 }
