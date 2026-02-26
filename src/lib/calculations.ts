@@ -226,17 +226,27 @@ export async function calculatePortfolioMetrics(
   const absoluteGain = currentValue - netInvested;
   const absoluteGainPct = netInvested > 0 ? absoluteGain / netInvested : 0;
 
-  // 연도별 수익률 계산
-  const annualReturns = calculateAnnualReturns(monthlyValues);
+  // 월별 순 현금흐름 (CASH_IN - CASH_OUT) — TWR/연수익/Sharpe에 공통 사용
+  const netCFByMonth: Record<string, number> = {};
+  for (const tx of sorted) {
+    const m = formatYYYYMM(new Date(tx.date));
+    if (tx.type === "CASH_IN")
+      netCFByMonth[m] = (netCFByMonth[m] || 0) + tx.totalAmount;
+    else if (tx.type === "CASH_OUT")
+      netCFByMonth[m] = (netCFByMonth[m] || 0) - tx.totalAmount;
+  }
 
-  // CAGR (TWR 기반)
-  const cagr = calculateTWR(sorted, priceData, months, monthlyValues);
+  // 연도별 수익률 계산
+  const annualReturns = calculateAnnualReturns(monthlyValues, netCFByMonth);
+
+  // CAGR (TWR 기반, Modified Dietz)
+  const cagr = calculateTWR(monthlyValues, netCFByMonth);
 
   // IRR 계산
   const irr = calculateIRR(sorted, currentValue);
 
   // Sharpe Ratio
-  const sharpeRatio = calculateSharpe(monthlyValues);
+  const sharpeRatio = calculateSharpe(monthlyValues, netCFByMonth);
 
   // Max Drawdown
   const maxDrawdown = calculateMaxDrawdown(monthlyValues);
@@ -261,103 +271,96 @@ export async function calculatePortfolioMetrics(
 
 // ---------- 보조 계산 함수 ----------
 
-function calculateAnnualReturns(monthly: MonthlyValue[]): AnnualReturn[] {
+/**
+ * 연도별 수익률 — 월별 Modified Dietz 수익률을 연도 내 chain-link
+ * (현금흐름 효과를 제거한 순수 투자 수익률)
+ */
+function calculateAnnualReturns(
+  monthly: MonthlyValue[],
+  netCFByMonth: Record<string, number>
+): AnnualReturn[] {
   if (monthly.length < 2) return [];
 
-  const byYear: Record<number, MonthlyValue[]> = {};
+  // 월별 CF-adjusted 수익률 계산
+  const monthlyReturns: Array<{ date: string; r: number }> = [];
+  for (let i = 1; i < monthly.length; i++) {
+    const prev = monthly[i - 1];
+    const curr = monthly[i];
+    if (prev.value <= 0) continue;
+    const cf = netCFByMonth[curr.date] || 0;
+    // Modified Dietz (CF at month-end): (V_end - CF) / V_start
+    const r = (curr.value - cf) / prev.value;
+    if (r > 0) monthlyReturns.push({ date: curr.date, r });
+  }
+
+  // 연도별 수익률 chain-link
+  const byYear: Record<number, number[]> = {};
+  for (const { date, r } of monthlyReturns) {
+    const year = parseInt(date.slice(0, 4));
+    if (!byYear[year]) byYear[year] = [];
+    byYear[year].push(r);
+  }
+
+  // 연도별 startValue/endValue는 실제 monthly 값에서 가져옴
+  const byYearMonthly: Record<number, MonthlyValue[]> = {};
   for (const m of monthly) {
     const year = parseInt(m.date.slice(0, 4));
-    if (!byYear[year]) byYear[year] = [];
-    byYear[year].push(m);
+    if (!byYearMonthly[year]) byYearMonthly[year] = [];
+    byYearMonthly[year].push(m);
   }
 
   const results: AnnualReturn[] = [];
-  const years = Object.keys(byYear)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
 
-  for (let i = 0; i < years.length; i++) {
-    const year = years[i];
-    const yearData = byYear[year];
-    const endValue = yearData[yearData.length - 1].value;
+  for (const year of years) {
+    const yearReturns = byYear[year];
+    const yearReturn = yearReturns.reduce((acc, r) => acc * r, 1) - 1;
 
-    // 연초 기준값: 전년도 마지막 값 or 해당 연도 첫 값
-    let startValue: number;
-    if (i > 0) {
-      const prevYear = years[i - 1];
-      const prevData = byYear[prevYear];
-      startValue = prevData[prevData.length - 1].value;
-    } else {
-      startValue = yearData[0].value;
-    }
+    const prevYearMonthly = byYearMonthly[year - 1];
+    const thisYearMonthly = byYearMonthly[year];
+    const startValue = prevYearMonthly
+      ? prevYearMonthly[prevYearMonthly.length - 1].value
+      : thisYearMonthly[0].value;
+    const endValue = thisYearMonthly[thisYearMonthly.length - 1].value;
 
     if (startValue > 0) {
-      results.push({
-        year,
-        return: endValue / startValue - 1,
-        startValue,
-        endValue,
-      });
+      results.push({ year, return: yearReturn, startValue, endValue });
     }
   }
 
   return results;
 }
 
+/**
+ * CAGR (TWR 기반, Modified Dietz 월별 근사)
+ *
+ * 핵심 아이디어:
+ *   월 수익률 = (V_월말 - 해당월 순CF) / V_전월말
+ * → 현금 입출금 효과를 제거한 순수 투자 수익률만 곱함
+ */
 function calculateTWR(
-  transactions: Transaction[],
-  _priceData: Record<string, Record<string, number>>,
-  _months: Date[],
-  monthlyValues: MonthlyValue[]
+  monthlyValues: MonthlyValue[],
+  netCFByMonth: Record<string, number>
 ): number | null {
   if (monthlyValues.length < 2) return null;
 
-  // 현금흐름 이벤트 날짜 기준으로 구간 수익률 계산 (월별 근사)
-  const cashFlowMonths = new Set<string>();
-  for (const tx of transactions) {
-    if (tx.type === "CASH_IN" || tx.type === "CASH_OUT") {
-      cashFlowMonths.add(formatYYYYMM(new Date(tx.date)));
-    }
-  }
-
-  // 구간 수익률 계산: 현금흐름 직전 구간의 수익률을 연결
   let twr = 1;
-  let lastCFIdx = 0;
-
   for (let i = 1; i < monthlyValues.length; i++) {
-    const m = monthlyValues[i];
-    if (cashFlowMonths.has(m.date)) {
-      // 구간 수익률 적용
-      const subReturn =
-        monthlyValues[i - 1].value > 0
-          ? monthlyValues[i].value / monthlyValues[i - 1].value
-          : 1;
-      twr *= subReturn;
-      lastCFIdx = i;
-    }
+    const prev = monthlyValues[i - 1];
+    const curr = monthlyValues[i];
+    if (prev.value <= 0) continue;
+    const cf = netCFByMonth[curr.date] || 0;
+    const subReturn = (curr.value - cf) / prev.value;
+    if (subReturn > 0) twr *= subReturn;
   }
-
-  // 마지막 구간
-  if (lastCFIdx < monthlyValues.length - 1) {
-    const subReturn =
-      monthlyValues[lastCFIdx].value > 0
-        ? monthlyValues[monthlyValues.length - 1].value /
-          monthlyValues[lastCFIdx].value
-        : 1;
-    twr *= subReturn;
-  }
-
   twr -= 1;
 
-  // 연환산
+  // 연환산 CAGR
   const firstDate = new Date(monthlyValues[0].date + "-01");
-  const lastDate = new Date(
-    monthlyValues[monthlyValues.length - 1].date + "-01"
-  );
-  const years =
-    (lastDate.getTime() - firstDate.getTime()) / (365.25 * 24 * 3600 * 1000);
+  const lastDate = new Date(monthlyValues[monthlyValues.length - 1].date + "-01");
+  const years = (lastDate.getTime() - firstDate.getTime()) / (365.25 * 24 * 3600 * 1000);
 
-  if (years < 0.1) return twr; // 1년 미만이면 그냥 반환
+  if (years < 0.1) return twr;
   return Math.pow(1 + twr, 1 / years) - 1;
 }
 
@@ -410,14 +413,18 @@ function calculateIRR(
   return rate;
 }
 
-function calculateSharpe(monthly: MonthlyValue[]): number | null {
+function calculateSharpe(
+  monthly: MonthlyValue[],
+  netCFByMonth: Record<string, number>
+): number | null {
   if (monthly.length < 6) return null;
 
   const returns: number[] = [];
   for (let i = 1; i < monthly.length; i++) {
-    if (monthly[i - 1].value > 0) {
-      returns.push(monthly[i].value / monthly[i - 1].value - 1);
-    }
+    if (monthly[i - 1].value <= 0) continue;
+    const cf = netCFByMonth[monthly[i].date] || 0;
+    const r = (monthly[i].value - cf) / monthly[i - 1].value - 1;
+    returns.push(r);
   }
 
   if (returns.length < 3) return null;
