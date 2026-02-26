@@ -32,6 +32,7 @@ export async function GET(
     quantity: t.quantity,
     price: t.price,
     totalAmount: t.totalAmount,
+    txCurrency: t.txCurrency,
   }));
 
   const metrics = await calculatePortfolioMetrics(transactions, portfolio.currency);

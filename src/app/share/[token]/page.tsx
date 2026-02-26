@@ -22,6 +22,7 @@ interface SharedTransaction {
   totalAmount: number;
   priceType: string;
   notes?: string | null;
+  txCurrency?: string | null;
 }
 
 interface ShareResponse {

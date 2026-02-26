@@ -46,7 +46,7 @@ export async function POST(
     return NextResponse.json({ error: "포트폴리오를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const { date, type, ticker, tickerName, quantity, price, totalAmount, priceType, notes } =
+  const { date, type, ticker, tickerName, quantity, price, totalAmount, priceType, notes, txCurrency } =
     await req.json();
 
   if (!date || !type || totalAmount === undefined) {
@@ -56,7 +56,7 @@ export async function POST(
     );
   }
 
-  const validTypes = ["BUY", "SELL", "CASH_IN", "CASH_OUT", "DIVIDEND"];
+  const validTypes = ["BUY", "SELL", "CASH_IN", "CASH_OUT", "DIVIDEND", "FX_CONVERT"];
   if (!validTypes.includes(type)) {
     return NextResponse.json({ error: "유효하지 않은 거래 유형입니다." }, { status: 400 });
   }
@@ -73,6 +73,7 @@ export async function POST(
       totalAmount: Number(totalAmount),
       priceType: priceType || "MANUAL",
       notes: notes || null,
+      txCurrency: txCurrency || null,
     },
   });
 

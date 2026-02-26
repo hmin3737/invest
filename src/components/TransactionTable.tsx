@@ -25,6 +25,7 @@ interface Transaction {
   totalAmount: number;
   priceType: string;
   notes?: string | null;
+  txCurrency?: string | null;
 }
 
 interface TransactionTableProps {
@@ -35,12 +36,13 @@ interface TransactionTableProps {
   readonly?: boolean;
 }
 
-const TYPE_BADGE: Record<string, "blue" | "purple" | "success" | "danger" | "warning"> = {
+const TYPE_BADGE: Record<string, "blue" | "purple" | "success" | "danger" | "warning" | "default"> = {
   BUY: "blue",
   SELL: "purple",
   CASH_IN: "success",
   CASH_OUT: "danger",
   DIVIDEND: "warning",
+  FX_CONVERT: "default",
 };
 
 export default function TransactionTable({
@@ -140,18 +142,29 @@ export default function TransactionTable({
                     : "—"}
                 </td>
                 <td className="py-3 px-3 text-right font-medium tabular-nums">
-                  <span
-                    className={
-                      ["CASH_IN", "SELL", "DIVIDEND"].includes(tx.type)
-                        ? "text-emerald-400"
-                        : "text-red-400"
-                    }
-                  >
-                    {["CASH_IN", "SELL", "DIVIDEND"].includes(tx.type)
-                      ? "+"
-                      : "-"}
-                    {formatCurrency(tx.totalAmount, currency)}
-                  </span>
+                  {tx.type === "FX_CONVERT" ? (
+                    <span className="text-orange-400">
+                      <span className="text-red-400">-{formatCurrency(tx.totalAmount, currency)}</span>
+                      {tx.quantity != null && tx.ticker && (
+                        <span className="ml-1 text-emerald-400">→ +{formatNumber(tx.quantity, 2)} {tx.ticker}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <span
+                      className={
+                        ["CASH_IN", "SELL", "DIVIDEND"].includes(tx.type)
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                      }
+                    >
+                      {["CASH_IN", "SELL", "DIVIDEND"].includes(tx.type)
+                        ? "+"
+                        : "-"}
+                      {tx.txCurrency && tx.txCurrency !== currency
+                        ? `${formatNumber(tx.totalAmount, 2)} ${tx.txCurrency}`
+                        : formatCurrency(tx.totalAmount, currency)}
+                    </span>
+                  )}
                 </td>
                 {!readonly && (
                   <td className="py-3 px-3">
@@ -190,7 +203,7 @@ export default function TransactionTable({
               initialData={{
                 id: editingTx.id,
                 date: editingTx.date.slice(0, 10),
-                type: editingTx.type as "BUY" | "SELL" | "CASH_IN" | "CASH_OUT" | "DIVIDEND",
+                type: editingTx.type as "BUY" | "SELL" | "CASH_IN" | "CASH_OUT" | "DIVIDEND" | "FX_CONVERT",
                 ticker: editingTx.ticker || "",
                 tickerName: editingTx.tickerName || "",
                 quantity: editingTx.quantity?.toString() || "",
@@ -198,6 +211,7 @@ export default function TransactionTable({
                 totalAmount: editingTx.totalAmount.toString(),
                 priceType: editingTx.priceType as "MANUAL" | "OPEN" | "CLOSE",
                 notes: editingTx.notes || "",
+                txCurrency: editingTx.txCurrency,
               }}
               onSuccess={() => {
                 setEditingTx(null);

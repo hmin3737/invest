@@ -5,7 +5,8 @@ export type TransactionType =
   | "SELL"
   | "CASH_IN"
   | "CASH_OUT"
-  | "DIVIDEND";
+  | "DIVIDEND"
+  | "FX_CONVERT";
 
 export interface Transaction {
   id: string;
@@ -16,6 +17,7 @@ export interface Transaction {
   quantity?: number | null;
   price?: number | null;
   totalAmount: number;
+  txCurrency?: string | null;
 }
 
 export interface MonthlyValue {
@@ -89,20 +91,34 @@ export async function calculatePortfolioMetrics(
     })
   );
 
-  // KRW 포트폴리오에 USD 티커가 있으면 월별 환율 조회
-  let fxRates: Record<string, number> = {};
+  // 외화별 월별 환율 맵 (포트폴리오가 KRW인 경우)
+  const fxRatesMap: Record<string, Record<string, number>> = {};
   if (portfolioCurrency === "KRW") {
-    const hasUSDTicker = tickers.some((t) => inferTickerCurrency(t) === "USD");
-    if (hasUSDTicker) {
-      fxRates = await getMonthlyExchangeRates("USD", "KRW", startDate, endDate);
+    const foreignCurrencies = new Set<string>();
+    // USD 주식 티커
+    for (const t of tickers) {
+      if (inferTickerCurrency(t) === "USD") foreignCurrencies.add("USD");
     }
+    // 명시적 txCurrency 및 FX_CONVERT 대상 통화
+    for (const tx of sorted) {
+      if (tx.txCurrency && tx.txCurrency !== "KRW") foreignCurrencies.add(tx.txCurrency);
+      if (tx.type === "FX_CONVERT" && tx.ticker && tx.ticker !== "KRW") foreignCurrencies.add(tx.ticker);
+    }
+    await Promise.all(
+      Array.from(foreignCurrencies).map(async (curr) => {
+        fxRatesMap[curr] = await getMonthlyExchangeRates(curr, "KRW", startDate, endDate);
+      })
+    );
   }
+  // USD 환율 (주식 가격 변환에 사용 — 하위 호환)
+  const fxRates = fxRatesMap["USD"] ?? {};
 
   // 월별 포트폴리오 가치 계산
   const months = generateMonths(startDate, endDate);
   const monthlyValues: MonthlyValue[] = [];
 
-  let cash = 0;
+  const cashBalance: Record<string, number> = {};
+  const baseCurrency = portfolioCurrency;
   const holdings: Record<string, number> = {};
   let txIdx = 0;
 
@@ -115,28 +131,53 @@ export async function calculatePortfolioMetrics(
       const tx = sorted[txIdx];
       switch (tx.type) {
         case "CASH_IN":
-          cash += tx.totalAmount;
+          cashBalance[baseCurrency] = (cashBalance[baseCurrency] ?? 0) + tx.totalAmount;
           break;
         case "CASH_OUT":
-          cash -= tx.totalAmount;
+          cashBalance[baseCurrency] = (cashBalance[baseCurrency] ?? 0) - tx.totalAmount;
           break;
-        case "BUY":
-          cash -= tx.totalAmount;
+        case "FX_CONVERT":
+          // 기준통화 출금 → 외화 입금
+          cashBalance[baseCurrency] = (cashBalance[baseCurrency] ?? 0) - tx.totalAmount;
+          if (tx.ticker) {
+            cashBalance[tx.ticker] = (cashBalance[tx.ticker] ?? 0) + (tx.quantity ?? 0);
+          }
+          break;
+        case "BUY": {
+          const curr = tx.txCurrency ?? baseCurrency;
+          cashBalance[curr] = (cashBalance[curr] ?? 0) - tx.totalAmount;
           if (tx.ticker) {
             holdings[tx.ticker] = (holdings[tx.ticker] || 0) + (tx.quantity || 0);
           }
           break;
-        case "SELL":
-          cash += tx.totalAmount;
+        }
+        case "SELL": {
+          const curr = tx.txCurrency ?? baseCurrency;
+          cashBalance[curr] = (cashBalance[curr] ?? 0) + tx.totalAmount;
           if (tx.ticker) {
             holdings[tx.ticker] = (holdings[tx.ticker] || 0) - (tx.quantity || 0);
           }
           break;
-        case "DIVIDEND":
-          cash += tx.totalAmount;
+        }
+        case "DIVIDEND": {
+          const curr = tx.txCurrency ?? baseCurrency;
+          cashBalance[curr] = (cashBalance[curr] ?? 0) + tx.totalAmount;
           break;
+        }
       }
       txIdx++;
+    }
+
+    // 현금 가치: 모든 통화를 기준통화로 환산
+    let totalCashInBase = 0;
+    for (const [curr, amount] of Object.entries(cashBalance)) {
+      if (curr === baseCurrency) {
+        totalCashInBase += amount;
+      } else {
+        const currFxRates = fxRatesMap[curr] ?? {};
+        const fxRate = getClosestPrice(currFxRates, monthEnd);
+        if (fxRate) totalCashInBase += amount * fxRate;
+      }
     }
 
     // 주식 평가액 계산
@@ -159,13 +200,13 @@ export async function calculatePortfolioMetrics(
       }
     }
 
-    const totalValue = Math.max(0, cash + stockValue);
-    if (totalValue > 0 || cash !== 0) {
+    const totalValue = Math.max(0, totalCashInBase + stockValue);
+    if (totalValue > 0 || totalCashInBase !== 0) {
       const monthStr = formatYYYYMM(monthEnd);
       monthlyValues.push({
         date: monthStr,
         value: totalValue,
-        cash: Math.max(0, cash),
+        cash: Math.max(0, totalCashInBase),
         stockValue,
       });
     }

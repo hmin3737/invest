@@ -34,7 +34,7 @@ model Transaction {
   id          String          @id @default(uuid())
   portfolioId String
   date        DateTime
-  type        String          // BUY | SELL | CASH_IN | CASH_OUT | DIVIDEND
+  type        String          // BUY | SELL | CASH_IN | CASH_OUT | DIVIDEND | FX_CONVERT
   ticker      String?
   tickerName  String?
   quantity    Float?
@@ -42,6 +42,7 @@ model Transaction {
   totalAmount Float
   priceType   String          @default("MANUAL") // MANUAL | OPEN | CLOSE
   notes       String?
+  txCurrency  String?         // null = portfolio base currency; "USD" = amount is in USD
   createdAt   DateTime        @default(now())
   portfolio   Portfolio       @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
 }

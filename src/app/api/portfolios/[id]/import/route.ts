@@ -10,6 +10,7 @@ const TYPE_MAP: Record<string, string> = {
   입금: "CASH_IN", CASH_IN: "CASH_IN", cash_in: "CASH_IN",
   출금: "CASH_OUT", CASH_OUT: "CASH_OUT", cash_out: "CASH_OUT",
   배당: "DIVIDEND", DIVIDEND: "DIVIDEND", dividend: "DIVIDEND",
+  환전: "FX_CONVERT", FX_CONVERT: "FX_CONVERT", fx_convert: "FX_CONVERT",
 };
 
 export async function POST(
@@ -106,6 +107,7 @@ export async function POST(
     rowCurrency: string; // 원본 통화 (KRW/USD)
     priceType: string;
     notes: string | null;
+    txCurrency: string | null;
   };
   const valid: ValidRow[] = [];
 
@@ -141,7 +143,7 @@ export async function POST(
     if (!txType) {
       errors.push({
         row: rowNum,
-        message: `유형 오류: "${rawType}" → 매수/매도/입금/출금/배당 중 하나여야 합니다.`,
+        message: `유형 오류: "${rawType}" → 매수/매도/입금/출금/배당/환전 중 하나여야 합니다.`,
       });
       continue;
     }
@@ -163,6 +165,13 @@ export async function POST(
       errors.push({
         row: rowNum,
         message: `${rawType} 거래에는 티커 심볼이 필요합니다.`,
+      });
+      continue;
+    }
+    if (txType === "FX_CONVERT" && !ticker) {
+      errors.push({
+        row: rowNum,
+        message: `환전 거래에는 수취 통화 코드(예: USD)가 티커 열에 필요합니다.`,
       });
       continue;
     }
@@ -206,6 +215,7 @@ export async function POST(
       rowCurrency,
       priceType: "MANUAL",
       notes,
+      txCurrency: null,
     });
   }
 

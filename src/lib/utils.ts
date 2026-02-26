@@ -52,6 +52,7 @@ export const TRANSACTION_TYPES = {
   CASH_IN: "입금",
   CASH_OUT: "출금",
   DIVIDEND: "배당",
+  FX_CONVERT: "환전",
 } as const;
 
 export const TRANSACTION_COLORS = {
@@ -60,6 +61,7 @@ export const TRANSACTION_COLORS = {
   CASH_IN: "text-emerald-400",
   CASH_OUT: "text-red-400",
   DIVIDEND: "text-yellow-400",
+  FX_CONVERT: "text-orange-400",
 } as const;
 
 export type TxType = keyof typeof TRANSACTION_TYPES;

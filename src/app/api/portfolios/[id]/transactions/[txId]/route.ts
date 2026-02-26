@@ -28,7 +28,7 @@ export async function PUT(
     return NextResponse.json({ error: "거래내역을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const { date, type, ticker, tickerName, quantity, price, totalAmount, priceType, notes } =
+  const { date, type, ticker, tickerName, quantity, price, totalAmount, priceType, notes, txCurrency } =
     await req.json();
 
   const updated = await prisma.transaction.update({
@@ -43,6 +43,7 @@ export async function PUT(
       totalAmount: totalAmount !== undefined ? Number(totalAmount) : tx.totalAmount,
       priceType: priceType || tx.priceType,
       notes: notes !== undefined ? notes || null : tx.notes,
+      txCurrency: txCurrency !== undefined ? txCurrency || null : tx.txCurrency,
     },
   });
 

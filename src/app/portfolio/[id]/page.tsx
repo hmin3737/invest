@@ -54,6 +54,7 @@ interface Transaction {
   totalAmount: number;
   priceType: string;
   notes?: string | null;
+  txCurrency?: string | null;
 }
 
 export default function PortfolioPage() {
