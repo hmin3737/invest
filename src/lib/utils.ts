@@ -63,3 +63,18 @@ export const TRANSACTION_COLORS = {
 } as const;
 
 export type TxType = keyof typeof TRANSACTION_TYPES;
+
+/**
+ * 티커의 거래 통화를 추론합니다.
+ * 한국 주식: 6자리 숫자, .KS, .KQ → KRW; 그 외 → USD
+ */
+export function inferTickerCurrency(ticker: string): string {
+  if (
+    ticker.endsWith(".KS") ||
+    ticker.endsWith(".KQ") ||
+    /^\d{6}$/.test(ticker)
+  ) {
+    return "KRW";
+  }
+  return "USD";
+}

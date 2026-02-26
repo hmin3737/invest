@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPriceOnDate, getCurrentExchangeRate, inferTickerCurrency } from "@/lib/yahoo";
+import { getPriceOnDate, getCurrentExchangeRate } from "@/lib/yahoo";
+import { inferTickerCurrency } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
