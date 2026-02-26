@@ -48,7 +48,7 @@ export async function PUT(
     return NextResponse.json({ error: "포트폴리오를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const { name, description, currency, isPublic } = await req.json();
+  const { name, description, currency, isPublic, shareTransactions } = await req.json();
 
   const updated = await prisma.portfolio.update({
     where: { id },
@@ -57,6 +57,7 @@ export async function PUT(
       description: description !== undefined ? description : portfolio.description,
       currency: currency ?? portfolio.currency,
       isPublic: isPublic !== undefined ? isPublic : portfolio.isPublic,
+      shareTransactions: shareTransactions !== undefined ? shareTransactions : portfolio.shareTransactions,
     },
   });
 

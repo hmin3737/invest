@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardTitle, CardValue } from "@/components/ui/Card";
 import { formatCurrency, formatPercent, formatNumber } from "@/lib/utils";
 import type { PortfolioMetrics } from "@/lib/calculations";
@@ -10,6 +11,7 @@ import {
   BarChart2,
   Activity,
   ArrowDownRight,
+  HelpCircle,
 } from "lucide-react";
 
 interface MetricsPanelProps {
@@ -62,6 +64,16 @@ export default function MetricsPanel({ metrics, currency }: MetricsPanelProps) {
   const isPositive = gain >= 0;
 
   return (
+    <div className="space-y-2">
+    <div className="flex justify-end">
+      <Link
+        href="/help"
+        className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+      >
+        <HelpCircle size={12} />
+        지표 설명
+      </Link>
+    </div>
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
       <MetricCard
         title="현재 가치"
@@ -135,6 +147,7 @@ export default function MetricsPanel({ metrics, currency }: MetricsPanelProps) {
         icon={ArrowDownRight}
         positive={false}
       />
+    </div>
     </div>
   );
 }

@@ -7,8 +7,22 @@ import MetricsPanel from "@/components/MetricsPanel";
 import PortfolioValueChart from "@/components/PortfolioValueChart";
 import AnnualReturnsChart from "@/components/AnnualReturnsChart";
 import AllocationChart from "@/components/AllocationChart";
-import { TrendingUp, AlertCircle } from "lucide-react";
+import { TrendingUp, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import type { PortfolioMetrics } from "@/lib/calculations";
+import TransactionTable from "@/components/TransactionTable";
+
+interface SharedTransaction {
+  id: string;
+  date: string;
+  type: string;
+  ticker?: string | null;
+  tickerName?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  totalAmount: number;
+  priceType: string;
+  notes?: string | null;
+}
 
 interface ShareResponse {
   portfolio: {
@@ -16,8 +30,10 @@ interface ShareResponse {
     name: string;
     description?: string | null;
     currency: string;
+    shareTransactions: boolean;
   };
   metrics: PortfolioMetrics;
+  transactions?: SharedTransaction[];
 }
 
 export default function SharePage() {
@@ -25,6 +41,7 @@ export default function SharePage() {
   const [data, setData] = useState<ShareResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [txExpanded, setTxExpanded] = useState(false);
 
   useEffect(() => {
     fetch(`/api/share/${token}`)
@@ -128,6 +145,37 @@ export default function SharePage() {
             />
           </Card>
         </div>
+
+        {/* 거래 내역 (공유자가 활성화한 경우) */}
+        {data.portfolio.shareTransactions && data.transactions && (
+          <Card padding="none">
+            <button
+              onClick={() => setTxExpanded(!txExpanded)}
+              className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-700/20 transition-colors rounded-xl"
+            >
+              <div>
+                <h3 className="text-sm font-semibold text-slate-300">거래 내역</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {data.transactions.length}개
+                </p>
+              </div>
+              {txExpanded ? (
+                <ChevronUp size={16} className="text-slate-500" />
+              ) : (
+                <ChevronDown size={16} className="text-slate-500" />
+              )}
+            </button>
+            {txExpanded && (
+              <div className="border-t border-slate-700/50 px-5 pb-5">
+                <TransactionTable
+                  transactions={data.transactions}
+                  currency={portfolio.currency}
+                  readonly
+                />
+              </div>
+            )}
+          </Card>
+        )}
       </main>
 
       <footer className="border-t border-slate-800 px-6 py-4 text-center mt-8">

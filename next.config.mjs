@@ -9,6 +9,7 @@ const nextConfig = {
       "prisma",
       "bcryptjs",
       "yahoo-finance2",
+      "xlsx",
     ],
   },
   async headers() {

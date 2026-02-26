@@ -29,9 +29,10 @@ interface Transaction {
 
 interface TransactionTableProps {
   transactions: Transaction[];
-  portfolioId: string;
+  portfolioId?: string;
   currency: string;
-  onRefresh: () => void;
+  onRefresh?: () => void;
+  readonly?: boolean;
 }
 
 const TYPE_BADGE: Record<string, "blue" | "purple" | "success" | "danger" | "warning"> = {
@@ -47,6 +48,7 @@ export default function TransactionTable({
   portfolioId,
   currency,
   onRefresh,
+  readonly = false,
 }: TransactionTableProps) {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export default function TransactionTable({
       await fetch(`/api/portfolios/${portfolioId}/transactions/${id}`, {
         method: "DELETE",
       });
-      onRefresh();
+      onRefresh?.();
     } finally {
       setDeletingId(null);
     }
@@ -67,7 +69,7 @@ export default function TransactionTable({
   if (transactions.length === 0) {
     return (
       <div className="text-center py-10 text-slate-500 text-sm">
-        아직 거래 내역이 없습니다. 위 버튼을 눌러 거래를 추가해보세요.
+        {readonly ? "거래 내역이 없습니다." : "아직 거래 내역이 없습니다. 위 버튼을 눌러 거래를 추가해보세요."}
       </div>
     );
   }
@@ -96,7 +98,7 @@ export default function TransactionTable({
               <th className="text-right py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">
                 금액
               </th>
-              <th className="py-2.5 px-3" />
+              {!readonly && <th className="py-2.5 px-3" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/50">
@@ -151,56 +153,60 @@ export default function TransactionTable({
                     {formatCurrency(tx.totalAmount, currency)}
                   </span>
                 </td>
-                <td className="py-3 px-3">
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setEditingTx(tx)}
-                      className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tx.id)}
-                      disabled={deletingId === tx.id}
-                      className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </td>
+                {!readonly && (
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingTx(tx)}
+                        className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(tx.id)}
+                        disabled={deletingId === tx.id}
+                        className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <Modal
-        open={!!editingTx}
-        onClose={() => setEditingTx(null)}
-        title="거래 수정"
-      >
-        {editingTx && (
-          <TransactionForm
-            portfolioId={portfolioId}
-            initialData={{
-              id: editingTx.id,
-              date: editingTx.date.slice(0, 10),
-              type: editingTx.type as "BUY" | "SELL" | "CASH_IN" | "CASH_OUT" | "DIVIDEND",
-              ticker: editingTx.ticker || "",
-              tickerName: editingTx.tickerName || "",
-              quantity: editingTx.quantity?.toString() || "",
-              price: editingTx.price?.toString() || "",
-              totalAmount: editingTx.totalAmount.toString(),
-              priceType: editingTx.priceType as "MANUAL" | "OPEN" | "CLOSE",
-              notes: editingTx.notes || "",
-            }}
-            onSuccess={() => {
-              setEditingTx(null);
-              onRefresh();
-            }}
-          />
-        )}
-      </Modal>
+      {!readonly && (
+        <Modal
+          open={!!editingTx}
+          onClose={() => setEditingTx(null)}
+          title="거래 수정"
+        >
+          {editingTx && (
+            <TransactionForm
+              portfolioId={portfolioId!}
+              initialData={{
+                id: editingTx.id,
+                date: editingTx.date.slice(0, 10),
+                type: editingTx.type as "BUY" | "SELL" | "CASH_IN" | "CASH_OUT" | "DIVIDEND",
+                ticker: editingTx.ticker || "",
+                tickerName: editingTx.tickerName || "",
+                quantity: editingTx.quantity?.toString() || "",
+                price: editingTx.price?.toString() || "",
+                totalAmount: editingTx.totalAmount.toString(),
+                priceType: editingTx.priceType as "MANUAL" | "OPEN" | "CLOSE",
+                notes: editingTx.notes || "",
+              }}
+              onSuccess={() => {
+                setEditingTx(null);
+                onRefresh?.();
+              }}
+            />
+          )}
+        </Modal>
+      )}
     </>
   );
 }

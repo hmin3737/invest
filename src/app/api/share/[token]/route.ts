@@ -39,7 +39,22 @@ export async function GET(
       name: portfolio.name,
       description: portfolio.description,
       currency: portfolio.currency,
+      shareTransactions: portfolio.shareTransactions,
     },
     metrics,
+    transactions: portfolio.shareTransactions
+      ? portfolio.transactions.map((t) => ({
+          id: t.id,
+          date: t.date,
+          type: t.type,
+          ticker: t.ticker,
+          tickerName: t.tickerName,
+          quantity: t.quantity,
+          price: t.price,
+          totalAmount: t.totalAmount,
+          priceType: t.priceType,
+          notes: t.notes,
+        }))
+      : undefined,
   });
 }

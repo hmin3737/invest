@@ -7,7 +7,8 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import TransactionForm from "@/components/TransactionForm";
 import TransactionTable from "@/components/TransactionTable";
-import { TrendingUp, Plus, ArrowLeft, BarChart3, Settings, Share2, Eye, EyeOff } from "lucide-react";
+import ImportModal from "@/components/ImportModal";
+import { TrendingUp, Plus, ArrowLeft, BarChart3, Settings, Share2, Eye, EyeOff, Upload } from "lucide-react";
 import { useForm } from "react-hook-form";
 import Input from "@/components/ui/Input";
 
@@ -17,6 +18,7 @@ interface Portfolio {
   description?: string | null;
   currency: string;
   isPublic: boolean;
+  shareTransactions: boolean;
   shareToken: string;
   transactions: Transaction[];
 }
@@ -41,11 +43,13 @@ export default function EditPortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [showAddTx, setShowAddTx] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [shareMsg, setShareMsg] = useState<string | null>(null);
 
-  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm({
-    defaultValues: { name: "", description: "", isPublic: false },
+  const { register, handleSubmit, reset, watch: watchSettings, formState: { isSubmitting } } = useForm({
+    defaultValues: { name: "", description: "", isPublic: false, shareTransactions: false },
   });
+  const watchIsPublic = watchSettings("isPublic");
 
   const fetchPortfolio = async () => {
     const res = await fetch(`/api/portfolios/${id}`);
@@ -57,13 +61,14 @@ export default function EditPortfolioPage() {
       name: data.name,
       description: data.description || "",
       isPublic: data.isPublic,
+      shareTransactions: data.shareTransactions,
     });
     setLoading(false);
   };
 
   useEffect(() => { fetchPortfolio(); }, [id]); // eslint-disable-line
 
-  const handleSettingsSave = async (data: { name: string; description: string; isPublic: boolean }) => {
+  const handleSettingsSave = async (data: { name: string; description: string; isPublic: boolean; shareTransactions: boolean }) => {
     await fetch(`/api/portfolios/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -144,10 +149,16 @@ export default function EditPortfolioPage() {
               {portfolio.transactions.length}개의 거래 · {portfolio.currency}
             </p>
           </div>
-          <Button onClick={() => setShowAddTx(true)}>
-            <Plus size={15} />
-            거래 추가
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setShowImport(true)}>
+              <Upload size={15} />
+              엑셀 가져오기
+            </Button>
+            <Button onClick={() => setShowAddTx(true)}>
+              <Plus size={15} />
+              거래 추가
+            </Button>
+          </div>
         </div>
 
         <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl overflow-hidden">
@@ -176,6 +187,14 @@ export default function EditPortfolioPage() {
         />
       </Modal>
 
+      {/* 엑셀 가져오기 모달 */}
+      <ImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        portfolioId={id}
+        onSuccess={fetchPortfolio}
+      />
+
       {/* 설정 모달 */}
       <Modal
         open={showSettings}
@@ -203,7 +222,27 @@ export default function EditPortfolioPage() {
             </label>
           </div>
 
-          {portfolio.isPublic && (
+          {/* 거래내역 공유 토글 (공개 상태일 때만 의미 있음) */}
+          {watchIsPublic && (
+            <div className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50 border border-slate-600">
+              <div>
+                <p className="text-sm font-medium text-slate-200">거래내역 공개</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  공유 링크 접속자에게 거래 내역 테이블도 보여줍니다.
+                </p>
+              </div>
+              <label className="relative cursor-pointer">
+                <input
+                  type="checkbox"
+                  {...register("shareTransactions")}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-slate-600 rounded-full peer peer-checked:bg-blue-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+              </label>
+            </div>
+          )}
+
+          {watchIsPublic ? (
             <div className="p-3 rounded-lg bg-slate-700/30 border border-slate-600">
               <div className="flex items-center gap-2 mb-1">
                 <Eye size={12} className="text-emerald-400" />
@@ -213,9 +252,7 @@ export default function EditPortfolioPage() {
                 {`${process.env.NEXT_PUBLIC_BASE_URL || ""}/share/${portfolio.shareToken}`}
               </p>
             </div>
-          )}
-
-          {!portfolio.isPublic && (
+          ) : (
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <EyeOff size={12} />
               현재 비공개 상태입니다.

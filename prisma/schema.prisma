@@ -20,9 +20,10 @@ model Portfolio {
   userId       String
   name         String
   description  String?
-  isPublic     Boolean       @default(false)
-  shareToken   String        @unique @default(uuid())
-  currency     String        @default("KRW")
+  isPublic          Boolean       @default(false)
+  shareToken        String        @unique @default(uuid())
+  shareTransactions Boolean       @default(false)
+  currency          String        @default("KRW")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
