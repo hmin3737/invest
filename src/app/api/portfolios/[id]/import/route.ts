@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import * as XLSX from "xlsx";
+import { getDailyPrices, formatDateStr } from "@/lib/yahoo";
 
 const TYPE_MAP: Record<string, string> = {
   매수: "BUY", BUY: "BUY", buy: "BUY",
@@ -80,6 +81,7 @@ export async function POST(
   const iTickerName = col("종목명");
   const iQty = col("수량");
   const iPrice = col("단가");
+  const iCurrency = col("통화");
   const iTotal = col("총금액");
   const iNotes = col("메모");
 
@@ -91,7 +93,8 @@ export async function POST(
 
   // ── 행별 유효성 검사 ──────────────────────────────────────
   const errors: { row: number; message: string }[] = [];
-  const valid: {
+
+  type ValidRow = {
     portfolioId: string;
     date: Date;
     type: string;
@@ -100,9 +103,11 @@ export async function POST(
     quantity: number | null;
     price: number | null;
     totalAmount: number;
+    rowCurrency: string; // 원본 통화 (KRW/USD)
     priceType: string;
     notes: string | null;
-  }[] = [];
+  };
+  const valid: ValidRow[] = [];
 
   for (let i = headerRowIdx + 1; i < rows.length; i++) {
     const row = rows[i] as unknown[];
@@ -167,6 +172,10 @@ export async function POST(
       return isFinite(n) ? n : null;
     };
 
+    const rowCurrency = iCurrency >= 0
+      ? String(row[iCurrency] ?? "").trim().toUpperCase() || portfolio.currency
+      : portfolio.currency;
+
     const quantity = iQty >= 0 ? parseNum(row[iQty]) : null;
     const price = iPrice >= 0 ? parseNum(row[iPrice]) : null;
     const tickerName =
@@ -174,7 +183,7 @@ export async function POST(
     const notes =
       iNotes >= 0 ? String(row[iNotes] ?? "").trim() || null : null;
 
-    // 수량 × 단가 ≈ 총금액 경고 (±10% 이상 차이 나면)
+    // 수량 × 단가 ≈ 총금액 경고 (±10% 이상 차이 나면, 같은 통화 기준)
     if (quantity && price) {
       const expected = quantity * price;
       if (expected > 0 && Math.abs(expected - totalAmount) / expected > 0.1) {
@@ -182,7 +191,6 @@ export async function POST(
           row: rowNum,
           message: `경고: 수량(${quantity}) × 단가(${price}) = ${expected.toLocaleString()}이지만 총금액은 ${totalAmount.toLocaleString()}입니다. 행을 건너뛰지 않고 그대로 가져옵니다.`,
         });
-        // 경고는 에러가 아니므로 valid에 추가
       }
     }
 
@@ -195,6 +203,7 @@ export async function POST(
       quantity,
       price,
       totalAmount,
+      rowCurrency,
       priceType: "MANUAL",
       notes,
     });
@@ -210,11 +219,49 @@ export async function POST(
   if (valid.length === 0)
     return NextResponse.json({ error: "가져올 데이터가 없습니다." }, { status: 400 });
 
-  await prisma.transaction.createMany({ data: valid });
+  // ── USD → KRW 환율 적용 (포트폴리오가 KRW인 경우) ────────────
+  const needsFx = portfolio.currency === "KRW" &&
+    valid.some((r) => r.rowCurrency === "USD");
+
+  if (needsFx) {
+    // USD가 포함된 날짜 범위로 환율 일괄 조회
+    const usdRows = valid.filter((r) => r.rowCurrency === "USD");
+    const dates = usdRows.map((r) => r.date);
+    const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+    maxDate.setDate(maxDate.getDate() + 7); // 주말/공휴일 여유
+
+    const fxRates = await getDailyPrices("USDKRW=X", minDate, maxDate);
+
+    for (const row of valid) {
+      if (row.rowCurrency !== "USD") continue;
+      // 해당 날짜 또는 가장 가까운 이후 날짜 환율 탐색
+      let rate: number | null = null;
+      for (let d = new Date(row.date); ; d.setDate(d.getDate() + 1)) {
+        const key = formatDateStr(d);
+        if (fxRates[key]) { rate = fxRates[key]; break; }
+        if (d > maxDate) break;
+      }
+      if (rate) {
+        row.totalAmount = Math.round(row.totalAmount * rate);
+        if (row.price != null) row.price = Math.round(row.price * rate);
+      } else {
+        errors.push({
+          row: 0,
+          message: `경고: ${formatDateStr(row.date)} 환율 조회 실패 — ${row.ticker ?? "현금"} 행의 USD 금액이 변환되지 않았습니다.`,
+        });
+      }
+    }
+  }
+
+  // rowCurrency 필드는 DB 스키마에 없으므로 제거
+  const insertData = valid.map(({ rowCurrency: _rc, ...rest }) => rest);
+
+  await prisma.transaction.createMany({ data: insertData });
 
   return NextResponse.json({
-    imported: valid.length,
+    imported: insertData.length,
     errors,
-    total: valid.length + errors.filter((e) => !e.message.startsWith("경고")).length,
+    total: insertData.length + errors.filter((e) => !e.message.startsWith("경고")).length,
   });
 }
