@@ -1,4 +1,4 @@
-import { getMonthlyPrices } from "./yahoo";
+import { getMonthlyPrices, getMonthlyExchangeRates, inferTickerCurrency } from "./yahoo";
 
 export type TransactionType =
   | "BUY"
@@ -61,7 +61,8 @@ export interface PortfolioMetrics {
  * 포트폴리오의 모든 지표를 계산합니다.
  */
 export async function calculatePortfolioMetrics(
-  transactions: Transaction[]
+  transactions: Transaction[],
+  portfolioCurrency: string = "KRW"
 ): Promise<PortfolioMetrics> {
   if (transactions.length === 0) {
     return emptyMetrics();
@@ -87,6 +88,15 @@ export async function calculatePortfolioMetrics(
       priceData[ticker] = prices;
     })
   );
+
+  // KRW 포트폴리오에 USD 티커가 있으면 월별 환율 조회
+  let fxRates: Record<string, number> = {};
+  if (portfolioCurrency === "KRW") {
+    const hasUSDTicker = tickers.some((t) => inferTickerCurrency(t) === "USD");
+    if (hasUSDTicker) {
+      fxRates = await getMonthlyExchangeRates("USD", "KRW", startDate, endDate);
+    }
+  }
 
   // 월별 포트폴리오 가치 계산
   const months = generateMonths(startDate, endDate);
@@ -135,7 +145,16 @@ export async function calculatePortfolioMetrics(
       if (qty > 0) {
         const price = getClosestPrice(priceData[ticker] || {}, monthEnd);
         if (price) {
-          stockValue += qty * price;
+          let convertedPrice = price;
+          if (
+            portfolioCurrency === "KRW" &&
+            inferTickerCurrency(ticker) === "USD" &&
+            Object.keys(fxRates).length > 0
+          ) {
+            const fxRate = getClosestPrice(fxRates, monthEnd);
+            if (fxRate) convertedPrice = price * fxRate;
+          }
+          stockValue += qty * convertedPrice;
         }
       }
     }
@@ -158,7 +177,16 @@ export async function calculatePortfolioMetrics(
     if (qty > 0.0001) {
       const price = getClosestPrice(priceData[ticker] || {}, endDate);
       if (price) {
-        const value = qty * price;
+        let convertedPrice = price;
+        if (
+          portfolioCurrency === "KRW" &&
+          inferTickerCurrency(ticker) === "USD" &&
+          Object.keys(fxRates).length > 0
+        ) {
+          const fxRate = getClosestPrice(fxRates, endDate);
+          if (fxRate) convertedPrice = price * fxRate;
+        }
+        const value = qty * convertedPrice;
         const tx = sorted.find((t) => t.ticker === ticker);
         currentHoldings.push({
           ticker,

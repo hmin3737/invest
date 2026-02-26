@@ -34,7 +34,7 @@ export async function GET(
     totalAmount: t.totalAmount,
   }));
 
-  const metrics = await calculatePortfolioMetrics(transactions);
+  const metrics = await calculatePortfolioMetrics(transactions, portfolio.currency);
 
   return NextResponse.json({
     portfolio: {
