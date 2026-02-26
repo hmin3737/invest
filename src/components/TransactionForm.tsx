@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -46,6 +46,8 @@ export default function TransactionForm({
 }: TransactionFormProps) {
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [priceInputCurrency, setPriceInputCurrency] = useState<"KRW" | "USD">("KRW");
+  const [convertingRate, setConvertingRate] = useState(false);
 
   const {
     register,
@@ -100,6 +102,38 @@ export default function TransactionForm({
       }
     } finally {
       setFetchingPrice(false);
+    }
+  };
+
+  // 자동조회 모드로 바뀌면 입력 통화를 KRW로 초기화
+  useEffect(() => {
+    if (watchPriceType !== "MANUAL") setPriceInputCurrency("KRW");
+  }, [watchPriceType]);
+
+  // USD 단가를 해당 날짜 환율로 KRW 환산
+  const convertToKRW = async () => {
+    const rawPrice = parseFloat(watch("price") || "0");
+    if (!rawPrice || !watchDate) return;
+    setConvertingRate(true);
+    setPriceError(null);
+    try {
+      const res = await fetch(
+        `/api/price?ticker=USDKRW%3DX&date=${watchDate}&priceType=CLOSE`
+      );
+      const data = await res.json();
+      if (res.ok && data.price) {
+        const converted = Math.round(rawPrice * data.price);
+        setValue("price", String(converted));
+        setPriceInputCurrency("KRW");
+        const qty = parseFloat(watchQuantity || "0");
+        if (qty > 0) {
+          setValue("totalAmount", String(converted * qty));
+        }
+      } else {
+        setPriceError("환율 조회 실패. 날짜를 확인해주세요.");
+      }
+    } finally {
+      setConvertingRate(false);
     }
   };
 
@@ -225,33 +259,71 @@ export default function TransactionForm({
             </div>
           </div>
 
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <Input
-                label="단가"
-                type="number"
-                step="any"
-                placeholder="150.00"
-                {...register("price", { onChange: handleQtyOrPriceChange })}
-                readOnly={watchPriceType !== "MANUAL"}
-              />
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-300">
+                단가
+                {priceInputCurrency === "USD" && (
+                  <span className="ml-1.5 text-xs font-normal text-blue-400">(USD 입력 중)</span>
+                )}
+              </label>
+              {portfolioCurrency === "KRW" && watchPriceType === "MANUAL" && (
+                <div className="flex rounded-md overflow-hidden border border-slate-600 text-xs">
+                  {(["KRW", "USD"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setPriceInputCurrency(c)}
+                      className={`px-2.5 py-1 font-medium transition-colors ${
+                        priceInputCurrency === c
+                          ? "bg-blue-500/30 text-blue-300"
+                          : "bg-slate-700/50 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            {watchPriceType !== "MANUAL" && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={fetchPrice}
-                loading={fetchingPrice}
-                className="mb-0.5"
-              >
-                가격 조회
-              </Button>
+            <div className="flex gap-2 items-center">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  step="any"
+                  placeholder={priceInputCurrency === "USD" ? "191.00" : "150.00"}
+                  {...register("price", { onChange: handleQtyOrPriceChange })}
+                  readOnly={watchPriceType !== "MANUAL"}
+                  className="w-full px-3 py-2 rounded-lg text-sm text-slate-100 bg-slate-800 border border-slate-700 hover:border-slate-600 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors duration-150"
+                />
+              </div>
+              {watchPriceType !== "MANUAL" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={fetchPrice}
+                  loading={fetchingPrice}
+                >
+                  가격 조회
+                </Button>
+              )}
+              {watchPriceType === "MANUAL" && portfolioCurrency === "KRW" && priceInputCurrency === "USD" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={convertToKRW}
+                  loading={convertingRate}
+                >
+                  → KRW 환산
+                </Button>
+              )}
+            </div>
+            {priceError && (
+              <p className="text-xs text-red-400">{priceError}</p>
             )}
           </div>
-          {priceError && (
-            <p className="text-xs text-red-400">{priceError}</p>
-          )}
         </>
       )}
 
